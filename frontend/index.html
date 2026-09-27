@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f6f3" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0c1210" media="(prefers-color-scheme: dark)" />
+    <title>NeoFarma</title>
+    <script>
+      // Aplica el tema antes del primer render para evitar parpadeo (ver src/lib/theme.tsx).
+      ;(function () {
+        try {
+          var t = localStorage.getItem('neofarma.theme')
+          var dark = t === 'dark' || ((!t || t === 'system') && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.classList.add('dark')
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light'
+        } catch (e) {}
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

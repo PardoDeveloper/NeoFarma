@@ -1,0 +1,266 @@
+@import 'tailwindcss';
+
+/* Modo oscuro por clase `.dark` en <html> (ver src/lib/theme.tsx e index.html). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   NeoFarma · "Clínico cálido"
+   Tokens semánticos: variables CSS que cambian con `.dark`. Usar SIEMPRE estos
+   (bg-canvas, bg-surface, text-ink, border-line…) y no las paletas slate o gray directas.
+   Ver docs/design-system.md.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  color-scheme: light;
+  --canvas: #f5f6f3;
+  --surface: #ffffff;
+  --subtle: #eef1ec;
+  --line: #e1e6e0;
+  --line-strong: #c9d1c9;
+  --ink: #14201b;
+  --ink-soft: #2b3833; /* texto de cuerpo algo más suave que ink */
+  --muted: #5a6b63;
+  --faint: #8a9a92;
+  --overlay: rgb(12 18 16 / 0.42);
+  --shadow-card-value: 0 1px 2px rgb(16 24 20 / 0.04), 0 1px 1px rgb(16 24 20 / 0.03);
+  --shadow-pop-value: 0 12px 32px -8px rgb(16 24 20 / 0.18), 0 2px 6px rgb(16 24 20 / 0.06);
+
+  /* Series de gráficos (validadas con dataviz: CVD ΔE ≥ 11.6, contraste ≥ 3:1 en ambos modos) */
+  --chart-1: #14a070;
+  --chart-2: #0891d0;
+  --chart-3: #7c3aed;
+  --chart-4: #d97706;
+  --chart-grid: var(--line);
+  --chart-axis: var(--faint);
+}
+
+.dark {
+  color-scheme: dark;
+  --canvas: #0c1210;
+  --surface: #131a18;
+  --subtle: #19221f;
+  --line: #25302c;
+  --line-strong: #34413c;
+  --ink: #e7eeea;
+  --ink-soft: #cdd8d2;
+  --muted: #94a59d;
+  --faint: #62726b;
+  --overlay: rgb(0 0 0 / 0.6);
+  --shadow-card-value: 0 0 #0000;
+  --shadow-pop-value: 0 16px 40px -8px rgb(0 0 0 / 0.6);
+  --chart-grid: #1f2926;
+}
+
+@theme inline {
+  --font-sans: 'Plus Jakarta Sans Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-overlay: var(--overlay);
+
+  --shadow-card: var(--shadow-card-value);
+  --shadow-pop: var(--shadow-pop-value);
+}
+
+@theme {
+  /* Marca: verde farmacia */
+  --color-brand-50: #eafbf3;
+  --color-brand-100: #cdf4e2;
+  --color-brand-200: #9de8c8;
+  --color-brand-300: #63d5a8;
+  --color-brand-400: #2fbc88;
+  --color-brand-500: #14a070;
+  --color-brand-600: #0b8259;
+  --color-brand-700: #0a6849;
+  --color-brand-800: #0b533c;
+  --color-brand-900: #0a4432;
+
+  /* Estados semánticos (ok=emerald · warn=amber · danger=rose · info=sky · rx=violet) */
+  --color-ok-50: #ecfdf5;
+  --color-ok-100: #d1fae5;
+  --color-ok-200: #a7f3d0;
+  --color-ok-300: #6ee7b7;
+  --color-ok-400: #34d399;
+  --color-ok-500: #10b981;
+  --color-ok-600: #059669;
+  --color-ok-700: #047857;
+  --color-ok-800: #065f46;
+
+  --color-warn-50: #fffbeb;
+  --color-warn-100: #fef3c7;
+  --color-warn-200: #fde68a;
+  --color-warn-300: #fcd34d;
+  --color-warn-400: #fbbf24;
+  --color-warn-500: #f59e0b;
+  --color-warn-600: #d97706;
+  --color-warn-700: #b45309;
+  --color-warn-800: #92400e;
+
+  --color-danger-50: #fff1f2;
+  --color-danger-100: #ffe4e6;
+  --color-danger-200: #fecdd3;
+  --color-danger-300: #fda4af;
+  --color-danger-400: #fb7185;
+  --color-danger-500: #f43f5e;
+  --color-danger-600: #e11d48;
+  --color-danger-700: #be123c;
+  --color-danger-800: #9f1239;
+
+  --color-info-50: #f0f9ff;
+  --color-info-100: #e0f2fe;
+  --color-info-200: #bae6fd;
+  --color-info-300: #7dd3fc;
+  --color-info-400: #38bdf8;
+  --color-info-500: #0ea5e9;
+  --color-info-600: #0284c7;
+  --color-info-700: #0369a1;
+  --color-info-800: #075985;
+
+  --color-rx-50: #f5f3ff;
+  --color-rx-100: #ede9fe;
+  --color-rx-200: #ddd6fe;
+  --color-rx-300: #c4b5fd;
+  --color-rx-400: #a78bfa;
+  --color-rx-500: #8b5cf6;
+  --color-rx-600: #7c3aed;
+  --color-rx-700: #6d28d9;
+  --color-rx-800: #5b21b6;
+
+  --animate-fade-in: fade-in 140ms ease-out;
+  --animate-pop-in: pop-in 160ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  --animate-slide-in-right: slide-in-right 220ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  --animate-slide-in-left: slide-in-left 220ms cubic-bezier(0.2, 0.9, 0.3, 1);
+  --animate-shimmer: shimmer 1.6s ease-in-out infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.985);
+    }
+  }
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(24px);
+      opacity: 0;
+    }
+  }
+  @keyframes slide-in-left {
+    from {
+      transform: translateX(-100%);
+    }
+  }
+  @keyframes shimmer {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.55;
+    }
+  }
+}
+
+@layer base {
+  html {
+    background-color: var(--canvas);
+    color: var(--ink);
+    /* Plus Jakarta tiene espacios estrechos: se abre un poco para lectura prolongada. */
+    word-spacing: 0.04em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    background-color: var(--canvas);
+    min-height: 100dvh;
+  }
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-brand-400) 30%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--color-brand-500) 60%, transparent);
+    outline-offset: 2px;
+  }
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+  }
+  /* Scrollbars discretas, coherentes con el tema */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+@layer components {
+  .select-chevron {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238A9A92' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+    background-size: 1.1rem;
+    background-position: right 0.6rem center;
+    background-repeat: no-repeat;
+  }
+  /* Etiqueta de sección: text-[11px] semibold uppercase tracking-wider text-faint */
+  .section-label {
+    font-size: 11px;
+    line-height: 1rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--faint);
+  }
+}
+
+/* El comprobante siempre se ve e imprime en claro. */
+.print-area {
+  color-scheme: light;
+  --canvas: #ffffff;
+  --surface: #ffffff;
+  --subtle: #eef1ec;
+  --line: #e1e6e0;
+  --line-strong: #c9d1c9;
+  --ink: #14201b;
+  --ink-soft: #2b3833;
+  --muted: #5a6b63;
+  --faint: #8a9a92;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    position: absolute;
+    inset: 0;
+    width: 80mm;
+  }
+}
