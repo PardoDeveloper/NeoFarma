@@ -29,3 +29,24 @@ func TestSplitGross(t *testing.T) {
 		}
 	}
 }
+
+func TestCommission(t *testing.T) {
+	cases := []struct {
+		net  int64
+		bps  int
+		want int64
+	}{
+		{0, 250, 0},
+		{10000, 0, 0},
+		{10000, 250, 250},       // 2,5%
+		{8403, 250, 210},        // 210,075 → 210
+		{8420, 250, 211},        // 210,5 → 211 (mitad hacia arriba)
+		{100000, 10000, 100000}, // 100%
+		{1999, 150, 30},         // 29,985 → 30
+	}
+	for _, c := range cases {
+		if got := Commission(c.net, c.bps); got != c.want {
+			t.Errorf("Commission(%d, %d) = %d, want %d", c.net, c.bps, got, c.want)
+		}
+	}
+}

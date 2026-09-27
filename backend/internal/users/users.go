@@ -20,29 +20,33 @@ import (
 )
 
 type User struct {
-	ID        int64     `json:"id"`
-	Username  string    `json:"username"`
-	FullName  string    `json:"full_name"`
-	Role      string    `json:"role"`
-	Active    bool      `json:"active"`
-	BranchIDs []int64   `json:"branch_ids"` // sucursales asignadas (el admin accede a todas sin asignación)
-	CreatedAt time.Time `json:"created_at"`
+	ID        int64   `json:"id"`
+	Username  string  `json:"username"`
+	FullName  string  `json:"full_name"`
+	Role      string  `json:"role"`
+	Active    bool    `json:"active"`
+	BranchIDs []int64 `json:"branch_ids"` // sucursales asignadas (el admin accede a todas sin asignación)
+	// CommissionBps es la comisión por venta en puntos básicos (1% = 100; 2,5% = 250) sobre la venta neta.
+	CommissionBps int       `json:"commission_bps"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 type CreateInput struct {
-	Username  string  `json:"username" validate:"required,min=3,max=40"`
-	FullName  string  `json:"full_name" validate:"required,min=2,max=120"`
-	Password  string  `json:"password" validate:"required,min=8,max=72"`
-	Role      string  `json:"role" validate:"required,oneof=admin quimico cajero bodega"`
-	BranchIDs []int64 `json:"branch_ids" validate:"max=50,dive,gt=0"`
+	Username      string  `json:"username" validate:"required,min=3,max=40"`
+	FullName      string  `json:"full_name" validate:"required,min=2,max=120"`
+	Password      string  `json:"password" validate:"required,min=8,max=72"`
+	Role          string  `json:"role" validate:"required,oneof=admin quimico cajero bodega"`
+	BranchIDs     []int64 `json:"branch_ids" validate:"max=50,dive,gt=0"`
+	CommissionBps int     `json:"commission_bps" validate:"gte=0,lte=10000"`
 }
 
 type UpdateInput struct {
-	FullName  string  `json:"full_name" validate:"required,min=2,max=120"`
-	Role      string  `json:"role" validate:"required,oneof=admin quimico cajero bodega"`
-	Active    bool    `json:"active"`
-	Password  *string `json:"password" validate:"omitempty,min=8,max=72"`
-	BranchIDs []int64 `json:"branch_ids" validate:"max=50,dive,gt=0"`
+	FullName      string  `json:"full_name" validate:"required,min=2,max=120"`
+	Role          string  `json:"role" validate:"required,oneof=admin quimico cajero bodega"`
+	Active        bool    `json:"active"`
+	Password      *string `json:"password" validate:"omitempty,min=8,max=72"`
+	BranchIDs     []int64 `json:"branch_ids" validate:"max=50,dive,gt=0"`
+	CommissionBps int     `json:"commission_bps" validate:"gte=0,lte=10000"`
 }
 
 type LoginInput struct {
@@ -67,7 +71,7 @@ func NewService(pool *pgxpool.Pool, tokens *auth.Tokens) *Service {
 
 var dummyHash, _ = bcrypt.GenerateFromPassword([]byte("neofarma-dummy"), bcrypt.DefaultCost)
 
-const userCols = `id, username, full_name, role, active,
+const userCols = `id, username, full_name, role, active, commission_bps,
 	coalesce((SELECT array_agg(ub.branch_id ORDER BY ub.branch_id) FROM user_branches ub WHERE ub.user_id = users.id), '{}'),
 	created_at`
 
@@ -76,7 +80,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 	var hash string
 	err := s.pool.QueryRow(ctx, `SELECT `+userCols+`, password_hash FROM users WHERE username = $1`,
 		strings.ToLower(strings.TrimSpace(in.Username))).
-		Scan(&u.ID, &u.Username, &u.FullName, &u.Role, &u.Active, &u.BranchIDs, &u.CreatedAt, &hash)
+		Scan(&u.ID, &u.Username, &u.FullName, &u.Role, &u.Active, &u.CommissionBps, &u.BranchIDs, &u.CreatedAt, &hash)
 	if db.IsNoRows(err) {
 		// Compara igual contra un hash ficticio para no filtrar qué usuarios existen por tiempo de respuesta.
 		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(in.Password))
@@ -98,7 +102,7 @@ func (s *Service) Login(ctx context.Context, in LoginInput) (LoginResult, error)
 func (s *Service) Get(ctx context.Context, id int64) (User, error) {
 	var u User
 	err := s.pool.QueryRow(ctx, `SELECT `+userCols+` FROM users WHERE id = $1`, id).
-		Scan(&u.ID, &u.Username, &u.FullName, &u.Role, &u.Active, &u.BranchIDs, &u.CreatedAt)
+		Scan(&u.ID, &u.Username, &u.FullName, &u.Role, &u.Active, &u.CommissionBps, &u.BranchIDs, &u.CreatedAt)
 	if db.IsNoRows(err) {
 		return u, apperr.NotFound("Usuario no encontrado")
 	}
@@ -114,7 +118,7 @@ func (s *Service) List(ctx context.Context) ([]User, error) {
 	var out []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.Username, &u.FullName, &u.Role, &u.Active, &u.BranchIDs, &u.CreatedAt); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.FullName, &u.Role, &u.Active, &u.CommissionBps, &u.BranchIDs, &u.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, u)
@@ -157,8 +161,8 @@ func (s *Service) Create(ctx context.Context, in CreateInput) (User, error) {
 	var id int64
 	err = db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
 		err := tx.QueryRow(ctx,
-			`INSERT INTO users (username, full_name, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id`,
-			strings.ToLower(strings.TrimSpace(in.Username)), strings.TrimSpace(in.FullName), string(hash), in.Role).Scan(&id)
+			`INSERT INTO users (username, full_name, password_hash, role, commission_bps) VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+			strings.ToLower(strings.TrimSpace(in.Username)), strings.TrimSpace(in.FullName), string(hash), in.Role, in.CommissionBps).Scan(&id)
 		if db.IsUniqueViolation(err) {
 			return apperr.Conflict("El nombre de usuario ya existe")
 		}
@@ -194,8 +198,8 @@ func (s *Service) Update(ctx context.Context, actor auth.Principal, id int64, in
 	}
 	err := db.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx,
-			`UPDATE users SET full_name = $2, role = $3, active = $4, password_hash = coalesce($5, password_hash) WHERE id = $1`,
-			id, strings.TrimSpace(in.FullName), in.Role, in.Active, hash)
+			`UPDATE users SET full_name = $2, role = $3, active = $4, password_hash = coalesce($5, password_hash), commission_bps = $6 WHERE id = $1`,
+			id, strings.TrimSpace(in.FullName), in.Role, in.Active, hash, in.CommissionBps)
 		if err != nil {
 			return err
 		}

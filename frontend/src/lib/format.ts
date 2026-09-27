@@ -187,3 +187,15 @@ export function ingredientLabel(i: Ingredient): string {
 
 /** Texto plano de un lote para descripciones: "Lote ABC123" o "Sin lote". */
 export const lotLabel = (lot: string | null | undefined) => (lot ? `Lote ${lot}` : 'Sin lote')
+
+/** Tasa en puntos básicos → texto: 250 → "2,5%" · 0 → "0%" */
+export const percentBps = (bps: number) => `${new Intl.NumberFormat('es-CL', { maximumFractionDigits: 2 }).format(bps / 100)}%`
+
+/** Texto de porcentaje → puntos básicos: "2,5" → 250 · "" → 0 · inválido → null */
+export function parsePercentToBps(s: string): number | null {
+  const t = s.trim().replace('%', '').replace(',', '.')
+  if (t === '') return 0
+  const n = Number(t)
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null
+  return Math.round(n * 100)
+}

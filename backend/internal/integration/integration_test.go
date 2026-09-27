@@ -24,7 +24,9 @@ import (
 	"github.com/neofarma/backend/internal/platform/auth"
 	"github.com/neofarma/backend/internal/platform/db"
 	"github.com/neofarma/backend/internal/platform/httpx"
+	"github.com/neofarma/backend/internal/platform/money"
 	"github.com/neofarma/backend/internal/purchases"
+	"github.com/neofarma/backend/internal/reports"
 	"github.com/neofarma/backend/internal/sales"
 	"github.com/neofarma/backend/internal/server"
 	"github.com/neofarma/backend/internal/suppliers"
@@ -924,8 +926,14 @@ func TestPurchaseDiscountAndDates(t *testing.T) {
 		wantCode(t, err, code)
 	}
 	bad(func(x *purchases.CreateInput) { x.Discount = 100001 }, "invalid_discount")
-	bad(func(x *purchases.CreateInput) { d := time.Now().AddDate(0, 0, -3).Format(time.DateOnly); x.DueDate = &d }, "invalid_due_date")
-	bad(func(x *purchases.CreateInput) { x.DocumentDate = time.Now().AddDate(0, 0, 1).Format(time.DateOnly); x.DueDate = nil }, "future_issue_date")
+	bad(func(x *purchases.CreateInput) {
+		d := time.Now().AddDate(0, 0, -3).Format(time.DateOnly)
+		x.DueDate = &d
+	}, "invalid_due_date")
+	bad(func(x *purchases.CreateInput) {
+		x.DocumentDate = time.Now().AddDate(0, 0, 1).Format(time.DateOnly)
+		x.DueDate = nil
+	}, "future_issue_date")
 
 	// Sin vencimiento ni descuento sigue siendo válido (y el descuento = subtotal deja neto 0).
 	x := in
@@ -936,4 +944,103 @@ func TestPurchaseDiscountAndDates(t *testing.T) {
 		t.Fatalf("descuento total: neto=%d total=%d", p2.NetAmount, p2.TotalAmount)
 	}
 	assertLedger(t)
+}
+
+// TestSalesCommission: la comisión se calcula sobre la venta neta con la tasa vigente, queda congelada en la
+// venta, las anulaciones no comisionan y solo el admin ve el reporte (cada vendedor ve la suya en su dashboard).
+func TestSalesCommission(t *testing.T) {
+	f := setup(t)
+	f.receive(f.paracet.ID, "COM", time.Now().AddDate(1, 0, 0), 50, 400)
+	us := users.NewService(pool, nil)
+	_, err := us.Update(f.ctx, f.admin, f.cajero.UserID, users.UpdateInput{FullName: "Usuario cajero", Role: "cajero", Active: true, BranchIDs: []int64{f.branch}, CommissionBps: 250})
+	must(t, err)
+	_, err = f.cash.Open(f.ctx, f.branch, f.cajero.UserID, cash.OpenInput{RegisterID: f.regID})
+	must(t, err)
+
+	// Venta de $10.000 con IVA → neto $8.403 → 2,5% = $210.
+	s1, err := f.sales.Create(f.ctx, f.cajero, f.branch, sales.CreateInput{PaymentMethod: "debito", Items: []sales.ItemInput{{ProductID: f.paracet.ID, Quantity: 10}}})
+	must(t, err)
+	var bps int
+	var amount int64
+	must(t, pool.QueryRow(f.ctx, `SELECT commission_bps, commission_amount FROM sales WHERE id = $1`, s1.ID).Scan(&bps, &amount))
+	if s1.NetAmount != 8403 || bps != 250 || amount != 210 {
+		t.Fatalf("comisión: neto=%d bps=%d monto=%d (want 8403, 250, 210)", s1.NetAmount, bps, amount)
+	}
+
+	// Cambiar la tasa no altera la venta anterior; la nueva venta usa la nueva tasa (5%).
+	_, err = us.Update(f.ctx, f.admin, f.cajero.UserID, users.UpdateInput{FullName: "Usuario cajero", Role: "cajero", Active: true, BranchIDs: []int64{f.branch}, CommissionBps: 500})
+	must(t, err)
+	s2, err := f.sales.Create(f.ctx, f.cajero, f.branch, sales.CreateInput{PaymentMethod: "debito", Items: []sales.ItemInput{{ProductID: f.paracet.ID, Quantity: 5}}})
+	must(t, err)
+	must(t, pool.QueryRow(f.ctx, `SELECT commission_amount FROM sales WHERE id = $1`, s1.ID).Scan(&amount))
+	if amount != 210 {
+		t.Fatalf("la comisión de una venta pasada cambió al modificar la tasa: %d", amount)
+	}
+	// Venta anulada: no comisiona.
+	s3, err := f.sales.Create(f.ctx, f.cajero, f.branch, sales.CreateInput{PaymentMethod: "debito", Items: []sales.ItemInput{{ProductID: f.paracet.ID, Quantity: 3}}})
+	must(t, err)
+	_, err = f.sales.Void(f.ctx, f.quimico, f.branch, s3.ID, sales.VoidInput{Reason: "error de digitación"})
+	must(t, err)
+
+	rep := reports.NewService(pool)
+	today := time.Now().Format(time.DateOnly)
+	r, err := rep.Commissions(f.ctx, &f.branch, today, today)
+	must(t, err)
+	var mine *reports.SellerCommission
+	for i := range r.Sellers {
+		if r.Sellers[i].UserID == f.cajero.UserID {
+			mine = &r.Sellers[i]
+		}
+	}
+	want := int64(210) + money.Commission(s2.NetAmount, 500)
+	if mine == nil || mine.SalesCount != 2 || mine.VoidedCount != 1 || mine.CommissionTotal != want || mine.CurrentBps != 500 {
+		t.Fatalf("reporte de comisiones: %+v (want total %d)", mine, want)
+	}
+	detail, err := rep.CommissionDetail(f.ctx, &f.branch, f.cajero.UserID, today, today)
+	must(t, err)
+	if len(detail) != 3 {
+		t.Fatalf("detalle: %d ventas, want 3", len(detail))
+	}
+	for _, d := range detail {
+		if d.SaleID == s3.ID && d.Commission != 0 {
+			t.Fatal("una venta anulada aparece con comisión en el detalle")
+		}
+	}
+
+	// Permisos y dashboard propio (HTTP).
+	tokens := auth.NewTokens("test-secret-test-secret-test-secret-123", time.Hour)
+	h := server.NewRouter(server.Deps{Pool: pool, Tokens: tokens, AllowedOrigins: []string{"*"}})
+	get := func(path string, p auth.Principal) (int, map[string]any) {
+		tok, _, err := tokens.Issue(p)
+		must(t, err)
+		req := httptest.NewRequest("GET", path, nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		var out map[string]any
+		_ = json.Unmarshal(rec.Body.Bytes(), &out)
+		return rec.Code, out
+	}
+	path := "/api/reports/commissions?from=" + today + "&to=" + today
+	for _, p := range []auth.Principal{f.cajero, f.quimico, f.bodega} {
+		if code, _ := get(path, p); code != 403 {
+			t.Errorf("%s accedió al reporte de comisiones: %d", p.Role, code)
+		}
+	}
+	if code, _ := get(path, f.admin); code != 200 {
+		t.Errorf("admin no pudo ver comisiones: %d", code)
+	}
+	code, d := get("/api/reports/dashboard", f.cajero)
+	if code != 200 || int64(d["own_commission_today"].(float64)) != want || int(d["own_commission_bps"].(float64)) != 500 {
+		t.Fatalf("dashboard del cajero: comisión hoy=%v tasa=%v (want %d, 500)", d["own_commission_today"], d["own_commission_bps"], want)
+	}
+	if _, d := get("/api/reports/dashboard", f.quimico); d["own_commission_today"].(float64) != 0 {
+		t.Fatal("el químico ve comisiones que no son suyas")
+	}
+	// Validación de tasa.
+	_, err = us.Update(f.ctx, f.admin, f.cajero.UserID, users.UpdateInput{FullName: "Usuario cajero", Role: "cajero", Active: true, BranchIDs: []int64{f.branch}, CommissionBps: 10001})
+	if err == nil {
+		// El validador HTTP rechaza >10000; a nivel de BD el CHECK también lo impide.
+		t.Fatal("se aceptó una tasa de comisión mayor al 100%")
+	}
 }

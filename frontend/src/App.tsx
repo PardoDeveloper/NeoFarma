@@ -14,6 +14,7 @@ const SalesPage = lazy(() => import('@/features/sales/SalesPage').then((m) => ({
 const ProductsPage = lazy(() => import('@/features/products/ProductsPage').then((m) => ({ default: m.ProductsPage })))
 const InventoryPage = lazy(() => import('@/features/inventory/InventoryPage').then((m) => ({ default: m.InventoryPage })))
 const RotationPage = lazy(() => import('@/features/inventory/RotationPage').then((m) => ({ default: m.RotationPage })))
+const CommissionsPage = lazy(() => import('@/features/reports/CommissionsPage').then((m) => ({ default: m.CommissionsPage })))
 const BranchesPage = lazy(() => import('@/features/branches/BranchesPage').then((m) => ({ default: m.BranchesPage })))
 const TransfersPage = lazy(() => import('@/features/transfers/TransfersPage').then((m) => ({ default: m.TransfersPage })))
 const PurchasesPage = lazy(() => import('@/features/purchases/PurchasesPage').then((m) => ({ default: m.PurchasesPage })))
@@ -133,6 +134,14 @@ export default function App() {
             element={
               <RequireRole roles={['quimico', 'bodega']}>
                 <SuppliersPage />
+              </RequireRole>
+            }
+          />
+          <Route
+            path="comisiones"
+            element={
+              <RequireRole roles={[]}>
+                <CommissionsPage />
               </RequireRole>
             }
           />

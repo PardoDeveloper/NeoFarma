@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Clock,
   DollarSign,
+  HandCoins,
   Package,
   Receipt,
   ShoppingCart,
@@ -18,7 +19,7 @@ import {
 import { cashApi, reportsApi } from '@/api/endpoints'
 import type { CashSession, Dashboard, PaymentMethod, Role } from '@/api/types'
 import { useAuth } from '@/lib/auth-context'
-import { clp, num, paymentLabel, time } from '@/lib/format'
+import { clp, num, paymentLabel, percentBps, time } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import { useChartTheme } from '@/lib/chart-theme'
 import {
@@ -197,6 +198,18 @@ function DashboardBody({
     />
   )
 
+  // Comisión propia (solo si el usuario tiene tasa asignada o ya comisionó este mes): nunca la de otros.
+  const hasCommission = d.own_commission_bps > 0 || d.own_commission_month > 0
+  const commissionCard = hasCommission && (
+    <StatCard
+      label="Tu comisión de hoy"
+      value={clp(d.own_commission_today)}
+      hint={`Mes: ${clp(d.own_commission_month)} · ${d.own_commission_bps ? `${percentBps(d.own_commission_bps)} de la venta neta` : 'sin tasa vigente'}`}
+      icon={<HandCoins className="size-5" />}
+      tone="brand"
+    />
+  )
+
   return (
     <div className="animate-fade-in flex flex-col">
       {/* Protagonista del día + contexto de rol */}
@@ -234,6 +247,7 @@ function DashboardBody({
       {ownOnly ? (
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <div className="flex flex-col gap-4">
+            {commissionCard}
             {ticketCard}
             {monthCard}
           </div>
@@ -242,7 +256,8 @@ function DashboardBody({
       ) : (
         <>
           {/* KPIs secundarios */}
-          <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <div className={cn('mt-4 grid gap-4', hasCommission ? 'sm:grid-cols-2 xl:grid-cols-4' : 'sm:grid-cols-3')}>
+            {commissionCard}
             {ticketCard}
             {monthCard}
             <StatCard

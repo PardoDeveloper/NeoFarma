@@ -178,10 +178,10 @@ func (s *seeder) users() error {
 	}
 	list := []u{
 		{users.CreateInput{Username: "admin", FullName: "Administrador General", Role: auth.RoleAdmin}, 0},
-		{users.CreateInput{Username: "quimico", FullName: "Q.F. Valentina Rojas", Role: auth.RoleQuimico, BranchIDs: s.branches}, 0},
-		{users.CreateInput{Username: "cajero", FullName: "Matías González", Role: auth.RoleCajero, BranchIDs: []int64{matriz}}, matriz},
-		{users.CreateInput{Username: "cajero2", FullName: "Camila Muñoz", Role: auth.RoleCajero, BranchIDs: []int64{centro}}, centro},
-		{users.CreateInput{Username: "cajero3", FullName: "Ignacio Pérez", Role: auth.RoleCajero, BranchIDs: []int64{norte}}, norte},
+		{users.CreateInput{Username: "quimico", FullName: "Q.F. Valentina Rojas", Role: auth.RoleQuimico, CommissionBps: 100, BranchIDs: s.branches}, 0},
+		{users.CreateInput{Username: "cajero", FullName: "Matías González", Role: auth.RoleCajero, CommissionBps: 250, BranchIDs: []int64{matriz}}, matriz},
+		{users.CreateInput{Username: "cajero2", FullName: "Camila Muñoz", Role: auth.RoleCajero, CommissionBps: 250, BranchIDs: []int64{centro}}, centro},
+		{users.CreateInput{Username: "cajero3", FullName: "Ignacio Pérez", Role: auth.RoleCajero, CommissionBps: 250, BranchIDs: []int64{norte}}, norte},
 		{users.CreateInput{Username: "bodega", FullName: "Jorge Soto", Role: auth.RoleBodega, BranchIDs: s.branches}, 0},
 	}
 	for _, x := range list {

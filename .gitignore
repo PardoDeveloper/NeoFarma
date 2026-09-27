@@ -1,9 +1,59 @@
+# ── Secretos y configuración local ─────────────────────────────
+# Credenciales de BD y JWT viven en .env (nunca versionar). Se versiona solo la plantilla.
 .env
+.env.*
+!.env.example
 *.local
+*.pem
+*.key
+
+# ── Datos locales ──────────────────────────────────────────────
+# Respaldos de BD (pg_dump) y volcados
+backups/
+*.dump
+*.sql.gz
+*.backup
+
+# ── Backend (Go) ───────────────────────────────────────────────
 backend/bin/
-frontend/node_modules/
+backend/api
+backend/seed
+*.exe
+*.test
+*.out
+coverage.out
+coverage.html
+__debug_bin*
+
+# ── Frontend (Node / Vite) ─────────────────────────────────────
+node_modules/
 frontend/dist/
 frontend/coverage/
-backups/
-.DS_Store
+*.tsbuildinfo
+.vite/
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Capturas de revisión visual y resultados de Playwright
 .shots/
+test-results/
+playwright-report/
+
+# ── Claude Code (config personal; agentes y skills sí se versionan) ─
+.claude/settings.local.json
+
+# ── Editores y sistema operativo ───────────────────────────────
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

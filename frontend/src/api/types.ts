@@ -59,6 +59,8 @@ export interface User {
   active: boolean
   /** Sucursales asignadas (el admin accede a todas y no tiene asignaciones) */
   branch_ids: number[]
+  /** Comisión por venta en puntos básicos (1% = 100; 2,5% = 250) sobre la venta neta */
+  commission_bps: number
   created_at: string
 }
 
@@ -392,6 +394,10 @@ export interface StockAlert {
 export interface Dashboard {
   /** "all": farmacia completa · "own": solo las ventas del cajero (inventario, margen y listas vienen vacíos) */
   scope: 'all' | 'own'
+  /** Comisión propia de quien consulta (ventas completadas) y su tasa vigente */
+  own_commission_today: number
+  own_commission_month: number
+  own_commission_bps: number
   today_sales_total: number
   today_sales_count: number
   today_avg_ticket: number
@@ -515,4 +521,35 @@ export interface TransferInput {
   to_branch_id: number
   notes?: string | null
   items: { lot_id: number; quantity: number }[]
+}
+
+export interface SellerCommission {
+  user_id: number
+  user_name: string
+  role: Role
+  /** Tasa vigente hoy; cada venta conserva la tasa con que se hizo */
+  current_bps: number
+  sales_count: number
+  net_total: number
+  commission_total: number
+  voided_count: number
+}
+
+export interface CommissionReport {
+  from: string
+  to: string
+  net_total: number
+  commission_total: number
+  sellers: SellerCommission[]
+}
+
+export interface CommissionSale {
+  sale_id: number
+  created_at: string
+  branch_name: string
+  status: 'completada' | 'anulada'
+  total: number
+  net_amount: number
+  commission_bps: number
+  commission_amount: number
 }

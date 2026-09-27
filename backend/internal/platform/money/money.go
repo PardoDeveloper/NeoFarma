@@ -15,3 +15,12 @@ func SplitGross(gross int64) (net, tax int64) {
 	net = roundDiv(gross*100, 100+TaxRatePercent)
 	return net, gross - net
 }
+
+// Commission calcula la comisión sobre un monto neto con una tasa en puntos básicos
+// (1% = 100 bps; 2,5% = 250), redondeando al peso (mitad hacia arriba).
+func Commission(net int64, bps int) int64 {
+	if net <= 0 || bps <= 0 {
+		return 0
+	}
+	return roundDiv(net*int64(bps), 10000)
+}

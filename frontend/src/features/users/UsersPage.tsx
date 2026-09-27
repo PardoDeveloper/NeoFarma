@@ -6,7 +6,7 @@ import { usersApi } from '@/api/endpoints'
 import { ApiError, errorMessage } from '@/api/client'
 import type { Branch, Role, User } from '@/api/types'
 import { useBranch } from '@/lib/branch-context'
-import { dateTime, roleLabel } from '@/lib/format'
+import { dateTime, parsePercentToBps, percentBps, roleLabel } from '@/lib/format'
 import { initials } from '@/components/layout/nav'
 import { Button, IconButton } from '@/components/ui/button'
 import { Checkbox, Field, Input, Select } from '@/components/ui/form'
@@ -123,6 +123,7 @@ export function UsersPage() {
                     <Th>Nombre</Th>
                     <Th>Usuario</Th>
                     <Th>Rol</Th>
+                    <Th numeric>Comisión</Th>
                     {multiBranch && <Th>Sucursales</Th>}
                     <Th>Estado</Th>
                     <Th className={multiBranch ? 'hidden 2xl:table-cell' : undefined}>Creado</Th>
@@ -131,7 +132,7 @@ export function UsersPage() {
                 </thead>
                 <tbody>
                   {q.isLoading ? (
-                    <SkeletonRows rows={5} cols={6} />
+                    <SkeletonRows rows={5} cols={7} />
                   ) : (
                     q.data?.data.map((u) => (
                       <Tr key={u.id} onClick={() => edit(u)} className={u.active ? undefined : 'opacity-60'}>
@@ -144,6 +145,9 @@ export function UsersPage() {
                         <Td className="font-mono text-xs text-muted">{u.username}</Td>
                         <Td>
                           <RoleBadge role={u.role} />
+                        </Td>
+                        <Td numeric className={u.commission_bps ? 'font-medium text-ink' : 'text-faint'}>
+                          {u.commission_bps ? percentBps(u.commission_bps) : '—'}
                         </Td>
                         {multiBranch && (
                           <Td>
@@ -207,6 +211,7 @@ export function UsersPage() {
                         <p className="mt-0.5 flex items-center gap-2">
                           <span className="font-mono text-xs text-muted">{u.username}</span>
                           <RoleBadge role={u.role} />
+                          {u.commission_bps > 0 && <span className="text-xs text-muted">Comisión {percentBps(u.commission_bps)}</span>}
                         </p>
                         {multiBranch && (
                           <div className="mt-1.5">
@@ -276,14 +281,25 @@ function UserForm({ user, onClose }: { user?: User; onClose: () => void }) {
     return activeBranches.length === 1 ? [activeBranches[0].id] : []
   })
   const [touched, setTouched] = useState(false)
+  // Comisión en % (texto editable) ↔ puntos básicos en la API: "2,5" ↔ 250.
+  const [commission, setCommission] = useState(() => (user?.commission_bps ? String(user.commission_bps / 100).replace('.', ',') : ''))
+  const commissionBps = parsePercentToBps(commission)
+  const commissionErr = commissionBps === null ? 'Ingrese un porcentaje entre 0 y 100 (ej. 2,5)' : undefined
   const isAdminRole = role === 'admin'
 
   const save = useMutation({
     mutationFn: () => {
       const branch_ids = isAdminRole ? [] : branchIds
       return user
-        ? usersApi.update(user.id, { full_name: fullName, role, active, password: password || undefined, branch_ids })
-        : usersApi.create({ username, full_name: fullName, role, password, branch_ids })
+        ? usersApi.update(user.id, {
+            full_name: fullName,
+            role,
+            active,
+            password: password || undefined,
+            branch_ids,
+            commission_bps: commissionBps ?? 0,
+          })
+        : usersApi.create({ username, full_name: fullName, role, password, branch_ids, commission_bps: commissionBps ?? 0 })
     },
     onSuccess: () => {
       toast.success(user ? 'Usuario actualizado' : 'Usuario creado')
@@ -316,6 +332,7 @@ function UserForm({ user, onClose }: { user?: User; onClose: () => void }) {
     setTouched(true)
     if (pwdInvalid) return toast.error('La contraseña debe tener al menos 8 caracteres')
     if (!isAdminRole && branchIds.length === 0) return
+    if (commissionErr) return
     save.mutate()
   }
 
@@ -345,6 +362,25 @@ function UserForm({ user, onClose }: { user?: User; onClose: () => void }) {
       ) : (
         <BranchPicker branches={branches} value={branchIds} onChange={setBranchIds} error={branchErr} />
       )}
+      <Field
+        label="Comisión por venta"
+        error={commissionErr}
+        hint="Porcentaje sobre la venta neta (sin IVA) de cada venta que registre. Vacío o 0 = sin comisión."
+      >
+        {(id) => (
+          <Input
+            id={id}
+            inputMode="decimal"
+            placeholder="0"
+            value={commission}
+            onChange={(e) => setCommission(e.target.value)}
+            invalid={!!commissionErr}
+            rightSlot={<span className="text-sm text-muted">%</span>}
+            className="text-right tabular-nums"
+            wrapperClassName="max-w-40"
+          />
+        )}
+      </Field>
       <Field label={user ? 'Nueva contraseña (opcional)' : 'Contraseña'} required={!user} hint="Mínimo 8 caracteres">
         {(id) => (
           <Input id={id} type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />

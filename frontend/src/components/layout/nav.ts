@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import {
   ArrowLeftRight,
   BarChart3,
+  HandCoins,
   Boxes,
   LayoutDashboard,
   Package,
@@ -75,6 +76,7 @@ export const navSections: { title: string; items: NavItem[] }[] = [
     title: 'Gestión',
     items: [
       { to: '/reportes', label: 'Reportes', icon: BarChart3, roles: ['quimico'], keywords: 'estadísticas informes' },
+      { to: '/comisiones', label: 'Comisiones', icon: HandCoins, roles: [], keywords: 'vendedores porcentaje remuneración liquidación' },
       { to: '/sucursales', label: 'Sucursales', icon: Store, roles: [], keywords: 'locales cajas farmacias' },
       { to: '/usuarios', label: 'Usuarios', icon: Users, roles: [], keywords: 'cuentas roles permisos' },
     ],

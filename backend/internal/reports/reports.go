@@ -47,24 +47,28 @@ type StockAlert struct {
 type Dashboard struct {
 	// Scope indica el alcance de los datos: "all" (farmacia completa) o "own" (solo ventas del cajero;
 	// en ese caso inventario, margen, alertas y productos no se calculan y vienen vacíos).
-	Scope             string           `json:"scope"`
-	TodaySalesTotal   int64            `json:"today_sales_total"`
-	TodaySalesCount   int              `json:"today_sales_count"`
-	TodayAvgTicket    int64            `json:"today_avg_ticket"`
-	TodayMargin       int64            `json:"today_margin"` // margen bruto neto de IVA
-	MonthSalesTotal   int64            `json:"month_sales_total"`
-	MonthSalesCount   int              `json:"month_sales_count"`
-	InventoryValue    int64            `json:"inventory_value"`
-	ActiveProducts    int              `json:"active_products"`
-	LowStockCount     int              `json:"low_stock_count"`
-	ExpiringSoonCount int              `json:"expiring_soon_count"` // lotes que vencen en 90 días
-	ExpiredCount      int              `json:"expired_count"`       // lotes vencidos con stock
-	OpenSessions      int              `json:"open_sessions"`
-	Last14Days        []DayPoint       `json:"last_14_days"`
-	TodayByMethod     map[string]int64 `json:"today_by_method"`
-	TopProducts       []TopProduct     `json:"top_products"`
-	LowStock          []StockAlert     `json:"low_stock"`
-	Expiring          []StockAlert     `json:"expiring"`
+	Scope string `json:"scope"`
+	// Comisión del propio usuario (ventas completadas en la sucursal/alcance) y su tasa vigente en bps.
+	OwnCommissionToday int64            `json:"own_commission_today"`
+	OwnCommissionMonth int64            `json:"own_commission_month"`
+	OwnCommissionBps   int              `json:"own_commission_bps"`
+	TodaySalesTotal    int64            `json:"today_sales_total"`
+	TodaySalesCount    int              `json:"today_sales_count"`
+	TodayAvgTicket     int64            `json:"today_avg_ticket"`
+	TodayMargin        int64            `json:"today_margin"` // margen bruto neto de IVA
+	MonthSalesTotal    int64            `json:"month_sales_total"`
+	MonthSalesCount    int              `json:"month_sales_count"`
+	InventoryValue     int64            `json:"inventory_value"`
+	ActiveProducts     int              `json:"active_products"`
+	LowStockCount      int              `json:"low_stock_count"`
+	ExpiringSoonCount  int              `json:"expiring_soon_count"` // lotes que vencen en 90 días
+	ExpiredCount       int              `json:"expired_count"`       // lotes vencidos con stock
+	OpenSessions       int              `json:"open_sessions"`
+	Last14Days         []DayPoint       `json:"last_14_days"`
+	TodayByMethod      map[string]int64 `json:"today_by_method"`
+	TopProducts        []TopProduct     `json:"top_products"`
+	LowStock           []StockAlert     `json:"low_stock"`
+	Expiring           []StockAlert     `json:"expiring"`
 }
 
 type SalesReport struct {
@@ -380,20 +384,28 @@ func NewHandler(svc *Service) *Handler { return &Handler{svc: svc} }
 
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/dashboard", httpx.Handle(func(w http.ResponseWriter, r *http.Request) error {
+		actor := auth.FromContext(r.Context())
+		b := branch.FromContext(r.Context()).ID
+		var d Dashboard
+		var err error
 		// El cajero solo recibe sus propias cifras; los datos de la farmacia no se calculan para él.
-		if actor := auth.FromContext(r.Context()); actor.Role == auth.RoleCajero {
-			d, err := h.svc.CashierDashboard(r.Context(), branch.FromContext(r.Context()).ID, actor.UserID)
-			if err != nil {
-				return err
-			}
-			return httpx.JSON(w, http.StatusOK, d)
+		if actor.Role == auth.RoleCajero {
+			d, err = h.svc.CashierDashboard(r.Context(), b, actor.UserID)
+		} else {
+			d, err = h.svc.Dashboard(r.Context(), b)
 		}
-		d, err := h.svc.Dashboard(r.Context(), branch.FromContext(r.Context()).ID)
 		if err != nil {
+			return err
+		}
+		// Comisión propia de quien consulta (nunca la de otros vendedores).
+		if d.OwnCommissionToday, d.OwnCommissionMonth, d.OwnCommissionBps, err = h.svc.ownCommission(r.Context(), b, actor.UserID); err != nil {
 			return err
 		}
 		return httpx.JSON(w, http.StatusOK, d)
 	}))
+	// Comisiones de vendedores: información de remuneraciones, solo administrador.
+	r.With(auth.RequireRoles()).Get("/commissions", httpx.Handle(h.commissions))
+	r.With(auth.RequireRoles()).Get("/commissions/{userID}", httpx.Handle(h.commissionDetail))
 	// Reportes de gestión: químico farmacéutico y admin (igual que la pantalla de Reportes).
 	r.With(auth.RequireRoles(auth.RoleQuimico)).Get("/sales", httpx.Handle(func(w http.ResponseWriter, r *http.Request) error {
 		q := r.URL.Query()

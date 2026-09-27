@@ -1,5 +1,7 @@
 import { api } from './client'
 import type {
+  CommissionReport,
+  CommissionSale,
   Branch,
   BranchInput,
   Transfer,
@@ -36,9 +38,12 @@ export const authApi = {
 
 export const usersApi = {
   list: () => api.get<{ data: User[] }>('/users'),
-  create: (b: { username: string; full_name: string; password: string; role: Role; branch_ids: number[] }) => api.post<User>('/users', b),
-  update: (id: number, b: { full_name: string; role: Role; active: boolean; password?: string; branch_ids: number[] }) =>
-    api.put<User>(`/users/${id}`, b),
+  create: (b: { username: string; full_name: string; password: string; role: Role; branch_ids: number[]; commission_bps: number }) =>
+    api.post<User>('/users', b),
+  update: (
+    id: number,
+    b: { full_name: string; role: Role; active: boolean; password?: string; branch_ids: number[]; commission_bps: number },
+  ) => api.put<User>(`/users/${id}`, b),
 }
 
 export const catalogApi = {
@@ -112,4 +117,8 @@ export const salesApi = {
 export const reportsApi = {
   dashboard: () => api.get<Dashboard>('/reports/dashboard'),
   sales: (from: string, to: string) => api.get<SalesReport>('/reports/sales', { from, to }),
+  /** Comisiones por vendedor en el período (solo admin). */
+  commissions: (from: string, to: string) => api.get<CommissionReport>('/reports/commissions', { from, to }),
+  commissionDetail: (userId: number, from: string, to: string) =>
+    api.get<{ data: CommissionSale[] }>(`/reports/commissions/${userId}`, { from, to }),
 }

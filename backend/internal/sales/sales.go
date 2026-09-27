@@ -237,6 +237,12 @@ func (s *Service) Create(ctx context.Context, actor auth.Principal, branchID int
 		}
 		total := subtotal - in.Discount
 		net, tax := money.SplitGross(total)
+		// Comisión del vendedor sobre la venta neta, con la tasa vigente (queda congelada en la venta).
+		var commissionBps int
+		if err := tx.QueryRow(ctx, `SELECT commission_bps FROM users WHERE id = $1`, actor.UserID).Scan(&commissionBps); err != nil {
+			return fmt.Errorf("commission rate: %w", err)
+		}
+		commission := money.Commission(net, commissionBps)
 		paid, change := total, int64(0)
 		if in.PaymentMethod == "efectivo" {
 			if in.AmountPaid < total {
@@ -247,9 +253,10 @@ func (s *Service) Create(ctx context.Context, actor auth.Principal, branchID int
 
 		err = tx.QueryRow(ctx, `
 			INSERT INTO sales (branch_id, session_id, user_id, payment_method, subtotal, discount, total, net_amount, tax_amount,
+			                   commission_bps, commission_amount,
 			                   amount_paid, change_amount, customer_rut, customer_name, prescription_number, prescriber_name)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
-			branchID, sessionID, actor.UserID, in.PaymentMethod, subtotal, in.Discount, total, net, tax, paid, change,
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
+			branchID, sessionID, actor.UserID, in.PaymentMethod, subtotal, in.Discount, total, net, tax, commissionBps, commission, paid, change,
 			in.CustomerRUT, in.CustomerName, in.PrescriptionNumber, in.PrescriberName).Scan(&saleID)
 		if err != nil {
 			return fmt.Errorf("insert sale: %w", err)
