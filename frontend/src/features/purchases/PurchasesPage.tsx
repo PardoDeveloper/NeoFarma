@@ -17,6 +17,7 @@ import {
   Pagination,
   Skeleton,
   SkeletonRows,
+  MiniStat,
   SummaryRow,
   Table,
   Td,
@@ -135,7 +136,10 @@ export function PurchasesPage() {
                         <p>
                           {documentLabel[p.document_type]} N° <span className="font-mono">{p.document_number}</span>
                         </p>
-                        <p className="text-xs text-muted">{date(p.document_date)}</p>
+                        <p className="text-xs text-muted">
+                          Emitida {date(p.document_date)}
+                          {p.due_date && <> · vence {date(p.due_date)}</>}
+                        </p>
                       </Td>
                       <Td numeric>
                         {p.items_count} / {p.units_count}
@@ -216,6 +220,11 @@ export function PurchaseDetailDrawer({ id, onClose }: { id: number | null; onClo
         </div>
       ) : (
         <>
+          <div className="mb-4 grid grid-cols-3 gap-2.5">
+            <MiniStat label="Emisión" value={date(p.document_date)} />
+            <MiniStat label="Vencimiento" value={p.due_date ? date(p.due_date) : '—'} />
+            <MiniStat label="Registro" value={date(p.created_at)} hint={`por ${p.user_name}`} />
+          </div>
           <Table containerClassName="rounded-xl border border-line">
             <thead>
               <tr>
@@ -239,7 +248,14 @@ export function PurchaseDetailDrawer({ id, onClose }: { id: number | null; onClo
                   </Td>
                   <Td>{date(it.expiry_date)}</Td>
                   <Td numeric>{it.quantity}</Td>
-                  <Td numeric>{clp(it.unit_cost)}</Td>
+                  <Td numeric>
+                    {clp(it.unit_cost)}
+                    {it.discount > 0 && (
+                      <p className="text-xs font-normal text-muted" title="Costo del lote tras prorratear el descuento de la factura">
+                        efectivo {clp(it.lot_unit_cost)}
+                      </p>
+                    )}
+                  </Td>
                   <Td numeric className="font-semibold">
                     {clp(it.subtotal)}
                   </Td>
@@ -248,6 +264,8 @@ export function PurchaseDetailDrawer({ id, onClose }: { id: number | null; onClo
             </tbody>
           </Table>
           <div className="mt-4 ml-auto w-64 space-y-1.5">
+            <SummaryRow label="Subtotal" value={clp(p.subtotal_amount)} />
+            {p.discount_amount > 0 && <SummaryRow label="Descuento" value={`−${clp(p.discount_amount)}`} />}
             <SummaryRow label="Neto" value={clp(p.net_amount)} />
             <SummaryRow label="IVA 19%" value={clp(p.tax_amount)} />
             <SummaryRow label="Total" value={clp(p.total_amount)} strong />

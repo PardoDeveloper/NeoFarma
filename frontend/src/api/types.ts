@@ -182,6 +182,10 @@ export interface PurchaseItem {
   quantity: number
   unit_cost: number
   subtotal: number
+  /** Parte del descuento global asignada a la línea */
+  discount: number
+  /** Costo unitario efectivo del lote tras el descuento */
+  lot_unit_cost: number
 }
 
 export interface Purchase {
@@ -194,7 +198,13 @@ export interface Purchase {
   document_type: DocumentType
   document_number: string
   document_date: string
+  /** Fecha de vencimiento (pago) del documento */
+  due_date: string | null
   user_name: string
+  /** Σ líneas (neto antes del descuento) */
+  subtotal_amount: number
+  /** Descuento global de la factura, aplicado sobre el neto (antes de IVA) */
+  discount_amount: number
   net_amount: number
   tax_amount: number
   total_amount: number
@@ -210,6 +220,8 @@ export interface PurchaseInput {
   document_type: DocumentType
   document_number: string
   document_date: string
+  due_date?: string | null
+  discount: number
   notes: string | null
   items: { product_id: number; lot_number?: string | null; expiry_date: string; quantity: number; unit_cost: number }[]
 }

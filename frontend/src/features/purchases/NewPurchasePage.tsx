@@ -2,11 +2,11 @@ import { useMemo, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowLeft, PackageCheck, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Lock, PackageCheck, Plus, Trash2 } from 'lucide-react'
 import { suppliersApi, purchasesApi } from '@/api/endpoints'
 import { ApiError, errorMessage } from '@/api/client'
 import type { DocumentType, Product } from '@/api/types'
-import { addDays, clp, formatRut, isoDate } from '@/lib/format'
+import { addDays, clp, date, formatRut, isoDate, parseAmount } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import { Button, IconButton } from '@/components/ui/button'
 import { Field, Input, Select, Textarea } from '@/components/ui/form'
@@ -32,18 +32,32 @@ export function NewPurchasePage() {
   const [supplierId, setSupplierId] = useState('')
   const [docType, setDocType] = useState<DocumentType>('factura')
   const [docNumber, setDocNumber] = useState('')
-  const [docDate, setDocDate] = useState(isoDate())
+  const [docDate, setDocDate] = useState(isoDate()) // fecha de emisión del documento
+  const [dueDate, setDueDate] = useState('')
+  const [dueTouched, setDueTouched] = useState(false) // si el usuario la editó, no se recalcula sola
+  const [discountInput, setDiscountInput] = useState('')
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<Line[]>([])
   const [newSupplier, setNewSupplier] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const today = isoDate()
 
+  const supplier = suppliers.data?.data.find((s) => String(s.id) === supplierId)
+  // Vencimiento sugerido = emisión + plazo de pago del proveedor, mientras el usuario no lo edite.
+  const suggestedDue = supplier && docDate ? isoDate(addDays(new Date(`${docDate}T12:00:00`), supplier.payment_terms_days)) : ''
+  const effectiveDue = dueTouched ? dueDate : suggestedDue
+
+  // Descuento global sobre el neto, antes de IVA (como el descuento global de la factura electrónica SII).
+  const discount = parseAmount(discountInput)
   const totals = useMemo(() => {
-    const net = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unit_cost) || 0), 0)
+    const subtotal = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.unit_cost) || 0), 0)
+    const net = Math.max(0, subtotal - discount)
     const tax = Math.round(net * 0.19)
-    return { net, tax, total: net + tax, units: lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0) }
-  }, [lines])
+    return { subtotal, net, tax, total: net + tax, units: lines.reduce((s, l) => s + (Number(l.quantity) || 0), 0) }
+  }, [lines, discount])
+  const discountError = discount > totals.subtotal ? 'Supera el subtotal' : undefined
+  const issueError = docDate > today ? 'No puede ser posterior a hoy' : !docDate ? 'Requerida' : undefined
+  const dueError = effectiveDue && effectiveDue < docDate ? 'Anterior a la emisión' : undefined
 
   function addLine(p: Product) {
     setLines((ls) => [
@@ -65,7 +79,14 @@ export function NewPurchasePage() {
     qty: !(Number(l.quantity) > 0),
     cost: l.unit_cost === '' || Number(l.unit_cost) < 0,
   })
-  const hasErrors = !supplierId || !docNumber.trim() || lines.length === 0 || lines.some((l) => Object.values(lineErrors(l)).some(Boolean))
+  const hasErrors =
+    !supplierId ||
+    !docNumber.trim() ||
+    !!issueError ||
+    !!dueError ||
+    !!discountError ||
+    lines.length === 0 ||
+    lines.some((l) => Object.values(lineErrors(l)).some(Boolean))
 
   const save = useMutation({
     mutationFn: () =>
@@ -74,6 +95,8 @@ export function NewPurchasePage() {
         document_type: docType,
         document_number: docNumber.trim(),
         document_date: docDate,
+        due_date: effectiveDue || null,
+        discount,
         notes: notes.trim() || null,
         items: lines.map((l) => ({
           product_id: l.product.id,
@@ -229,22 +252,58 @@ export function NewPurchasePage() {
                 </Select>
               )}
             </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="N° documento" required error={submitted && !docNumber.trim() ? 'Requerido' : undefined}>
-                {(id) => (
-                  <Input
-                    id={id}
-                    value={docNumber}
-                    onChange={(e) => setDocNumber(e.target.value)}
-                    invalid={submitted && !docNumber.trim()}
-                    className="font-mono"
-                  />
-                )}
-              </Field>
-              <Field label="Fecha" required>
-                {(id) => <Input id={id} type="date" value={docDate} max={today} onChange={(e) => setDocDate(e.target.value)} />}
-              </Field>
-            </div>
+            <Field label="N° documento" required error={submitted && !docNumber.trim() ? 'Requerido' : undefined}>
+              {(id) => (
+                <Input
+                  id={id}
+                  value={docNumber}
+                  onChange={(e) => setDocNumber(e.target.value)}
+                  invalid={submitted && !docNumber.trim()}
+                  className="font-mono"
+                />
+              )}
+            </Field>
+            <Field label="Fecha de registro" hint="Se registra automáticamente">
+              {(id) => <Input id={id} value={date(today)} readOnly disabled leftIcon={<Lock />} aria-describedby={undefined} />}
+            </Field>
+            <Field label="Fecha de emisión" required error={issueError}>
+              {(id) => (
+                <Input
+                  id={id}
+                  type="date"
+                  value={docDate}
+                  max={today}
+                  onChange={(e) => setDocDate(e.target.value)}
+                  invalid={!!issueError}
+                />
+              )}
+            </Field>
+            <Field
+              label="Fecha de vencimiento"
+              error={dueError}
+              hint={
+                supplier
+                  ? dueTouched
+                    ? 'Ingresada manualmente'
+                    : `Plazo del proveedor: ${supplier.payment_terms_days === 0 ? 'contado' : `${supplier.payment_terms_days} días`}`
+                  : 'Opcional'
+              }
+            >
+              {(id) => (
+                <Input
+                  id={id}
+                  type="date"
+                  value={effectiveDue}
+                  min={docDate || undefined}
+                  onChange={(e) => {
+                    setDueTouched(true)
+                    setDueDate(e.target.value)
+                  }}
+                  invalid={!!dueError}
+                />
+              )}
+            </Field>
+            <div />
             <Field label="Observaciones" className="md:col-span-4">
               {(id) => <Textarea id={id} rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />}
             </Field>
@@ -335,7 +394,38 @@ export function NewPurchasePage() {
               <span className="font-medium tabular-nums text-ink">{totals.units}</span> unidades
             </p>
             <div className="flex flex-wrap items-end gap-8">
-              <dl className="w-56 space-y-1 text-sm">
+              <dl className="w-64 space-y-1.5 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-muted">Subtotal</dt>
+                  <dd className="tabular-nums">{clp(totals.subtotal)}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <dt>
+                    <label htmlFor="purchase-discount" className="text-muted">
+                      Descuento
+                    </label>
+                  </dt>
+                  <dd className="flex flex-col items-end">
+                    <Input
+                      id="purchase-discount"
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={discountInput}
+                      onChange={(e) => setDiscountInput(e.target.value)}
+                      onBlur={() => setDiscountInput(discount ? discount.toLocaleString('es-CL') : '')}
+                      invalid={!!discountError}
+                      inputSize="sm"
+                      className="w-32 text-right tabular-nums"
+                      aria-describedby="purchase-discount-hint"
+                    />
+                    <span
+                      id="purchase-discount-hint"
+                      className={discountError ? 'text-xs text-danger-600 dark:text-danger-400' : 'sr-only'}
+                    >
+                      {discountError ?? 'Descuento global de la factura, sobre el neto'}
+                    </span>
+                  </dd>
+                </div>
                 <div className="flex justify-between">
                   <dt className="text-muted">Neto</dt>
                   <dd className="tabular-nums">{clp(totals.net)}</dd>

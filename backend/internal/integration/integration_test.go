@@ -878,3 +878,62 @@ func TestProductRotation(t *testing.T) {
 		}
 	}
 }
+
+// TestPurchaseDiscountAndDates: descuento global sobre el neto (antes de IVA), prorrateado al costo de los lotes,
+// y fechas de emisión/vencimiento del documento.
+func TestPurchaseDiscountAndDates(t *testing.T) {
+	f := setup(t)
+	issue := time.Now().AddDate(0, 0, -2).Format(time.DateOnly)
+	due := time.Now().AddDate(0, 0, 28).Format(time.DateOnly)
+	exp := time.Now().AddDate(1, 0, 0).Format(time.DateOnly)
+	in := purchases.CreateInput{
+		SupplierID: f.supplier, DocumentType: "factura", DocumentNumber: "DSC-1", DocumentDate: issue, DueDate: &due, Discount: 10000,
+		Items: []purchases.ItemInput{
+			{ProductID: f.paracet.ID, ExpiryDate: exp, Quantity: 30, UnitCost: 1000}, // 30.000
+			{ProductID: f.clonaz.ID, ExpiryDate: exp, Quantity: 10, UnitCost: 7000},  // 70.000
+		},
+	}
+	p, err := f.purch.Create(f.ctx, f.branch, f.bodega.UserID, in)
+	must(t, err)
+	if p.SubtotalAmount != 100000 || p.DiscountAmount != 10000 || p.NetAmount != 90000 || p.TaxAmount != 17100 || p.TotalAmount != 107100 {
+		t.Fatalf("montos: subtotal=%d descuento=%d neto=%d iva=%d total=%d", p.SubtotalAmount, p.DiscountAmount, p.NetAmount, p.TaxAmount, p.TotalAmount)
+	}
+	if p.DueDate == nil || p.DueDate.Format(time.DateOnly) != due || p.DocumentDate.Format(time.DateOnly) != issue {
+		t.Fatalf("fechas: emisión=%v vencimiento=%v", p.DocumentDate, p.DueDate)
+	}
+	// Prorrateo: 3.000 a la línea de 30.000 y 7.000 a la de 70.000; costo efectivo 900 y 6.300.
+	if p.Items[0].Discount != 3000 || p.Items[1].Discount != 7000 || p.Items[0].LotUnitCost != 900 || p.Items[1].LotUnitCost != 6300 {
+		t.Fatalf("prorrateo: %+v", p.Items)
+	}
+	if p.Items[0].UnitCost != 1000 || p.Items[0].Subtotal != 30000 {
+		t.Fatal("la línea debe conservar el costo y subtotal impresos en la factura")
+	}
+	var productCost int64
+	must(t, pool.QueryRow(f.ctx, `SELECT cost FROM products WHERE id = $1`, f.paracet.ID).Scan(&productCost))
+	if productCost != 900 {
+		t.Fatalf("el costo del producto debe ser el efectivo tras descuento: %d", productCost)
+	}
+
+	// Validaciones.
+	bad := func(mod func(*purchases.CreateInput), code string) {
+		t.Helper()
+		x := in
+		x.DocumentNumber = fmt.Sprintf("DSC-%s", code)
+		mod(&x)
+		_, err := f.purch.Create(f.ctx, f.branch, f.bodega.UserID, x)
+		wantCode(t, err, code)
+	}
+	bad(func(x *purchases.CreateInput) { x.Discount = 100001 }, "invalid_discount")
+	bad(func(x *purchases.CreateInput) { d := time.Now().AddDate(0, 0, -3).Format(time.DateOnly); x.DueDate = &d }, "invalid_due_date")
+	bad(func(x *purchases.CreateInput) { x.DocumentDate = time.Now().AddDate(0, 0, 1).Format(time.DateOnly); x.DueDate = nil }, "future_issue_date")
+
+	// Sin vencimiento ni descuento sigue siendo válido (y el descuento = subtotal deja neto 0).
+	x := in
+	x.DocumentNumber, x.DueDate, x.Discount = "DSC-2", nil, 100000
+	p2, err := f.purch.Create(f.ctx, f.branch, f.bodega.UserID, x)
+	must(t, err)
+	if p2.NetAmount != 0 || p2.TotalAmount != 0 || p2.DueDate != nil {
+		t.Fatalf("descuento total: neto=%d total=%d", p2.NetAmount, p2.TotalAmount)
+	}
+	assertLedger(t)
+}
